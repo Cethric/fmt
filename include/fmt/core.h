@@ -18,7 +18,7 @@
 #include <vector>
 
 // The fmt library version in the form major * 10000 + minor * 100 + patch.
-#define FMT_VERSION 60103
+#define FMT_VERSION 60200
 
 #ifdef __has_feature
 #  define FMT_HAS_FEATURE(x) __has_feature(x)
@@ -326,8 +326,8 @@ FMT_CONSTEXPR typename std::make_unsigned<Int>::type to_unsigned(Int value) {
 
 constexpr unsigned char micro[] = "\u00B5";
 
-constexpr bool is_utf8() {
-  return FMT_UNICODE ||
+template <typename Char> constexpr bool is_unicode() {
+  return FMT_UNICODE || sizeof(Char) != 1 ||
          (sizeof(micro) == 3 && micro[0] == 0xC2 && micro[1] == 0xB5);
 }
 
@@ -1319,7 +1319,7 @@ using wformat_context = buffer_context<wchar_t>;
  */
 template <typename Context, typename... Args>
 class format_arg_store
-#if FMT_GCC_VERSION < 409
+#if FMT_GCC_VERSION && FMT_GCC_VERSION < 409
     // Workaround a GCC template argument substitution bug.
     : public basic_format_args<Context>
 #endif
@@ -1343,7 +1343,7 @@ class format_arg_store
 
   format_arg_store(const Args&... args)
       :
-#if FMT_GCC_VERSION < 409
+#if FMT_GCC_VERSION && FMT_GCC_VERSION < 409
         basic_format_args<Context>(*this),
 #endif
         data_{internal::make_arg<is_packed, Context>(args)...} {
@@ -1376,7 +1376,7 @@ inline format_arg_store<Context, Args...> make_format_args(
  */
 template <typename Context>
 class dynamic_format_arg_store
-#if FMT_GCC_VERSION < 409
+#if FMT_GCC_VERSION && FMT_GCC_VERSION < 409
     // Workaround a GCC template argument substitution bug.
     : public basic_format_args<Context>
 #endif
@@ -1659,8 +1659,11 @@ typename buffer_context<Char>::iterator vformat_to(
     buffer<Char>& buf, basic_string_view<Char> format_str,
     basic_format_args<buffer_context<type_identity_t<Char>>> args);
 
-FMT_API void vprint_mojibake(std::FILE*, string_view, format_args);
+template <typename Char, typename Args,
+          FMT_ENABLE_IF(!std::is_same<Char, char>::value)>
+inline void vprint_mojibake(std::FILE*, basic_string_view<Char>, const Args&) {}
 
+FMT_API void vprint_mojibake(std::FILE*, string_view, format_args);
 #ifndef _WIN32
 inline void vprint_mojibake(std::FILE*, string_view, format_args) {}
 #endif
@@ -1751,10 +1754,9 @@ FMT_API void vprint(std::FILE*, string_view, format_args);
     fmt::print(stderr, "Don't {}!", "panic");
   \endrst
  */
-template <typename S, typename... Args,
-          FMT_ENABLE_IF(internal::is_string<S>::value)>
+template <typename S, typename... Args, typename Char = char_t<S>>
 inline void print(std::FILE* f, const S& format_str, Args&&... args) {
-  return internal::is_utf8()
+  return internal::is_unicode<Char>()
              ? vprint(f, to_string_view(format_str),
                       internal::make_args_checked<Args...>(format_str, args...))
              : internal::vprint_mojibake(
@@ -1773,10 +1775,9 @@ inline void print(std::FILE* f, const S& format_str, Args&&... args) {
     fmt::print("Elapsed time: {0:.2f} seconds", 1.23);
   \endrst
  */
-template <typename S, typename... Args,
-          FMT_ENABLE_IF(internal::is_string<S>::value)>
+template <typename S, typename... Args, typename Char = char_t<S>>
 inline void print(const S& format_str, Args&&... args) {
-  return internal::is_utf8()
+  return internal::is_unicode<Char>()
              ? vprint(to_string_view(format_str),
                       internal::make_args_checked<Args...>(format_str, args...))
              : internal::vprint_mojibake(
